@@ -1,6 +1,12 @@
 {
-    "compilerOptions": {
-        "target": "ES2015",
-        "lib": ["DOM", "ESNext"]
-    }
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "lib",
+    "target": "ES2015",
+    "moduleResolution": "node",
+    "lib": ["DOM", "ESNext"],
+    "declaration": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["src"]
 }
