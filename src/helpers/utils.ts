@@ -46,4 +46,21 @@ export function isObject(value: unknown): value is object {
   return value ? typeof value === 'object' : false
 }
 
+export function generateFrameHtml(origin: string) {
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  
+  <head>
+    <meta charset="UTF-8" />
+    <base href="${origin}" />
+  </head>
+  
+  <body>
+  </body>
+  
+  </html>
+  `
+}
+
 export const domParser = new DOMParser()

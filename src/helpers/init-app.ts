@@ -1,4 +1,4 @@
-import { addEventListenerTo, appendChildTo, appendTo, defineProperties, defineProperty, domParser, replaceChild, warn } from './utils'
+import { addEventListenerTo, appendChildTo, appendTo, defineProperties, defineProperty, domParser, generateFrameHtml, replaceChild, warn } from './utils'
 import { syncUrlToTopWindow, updateTopWindowUrl } from './sync-url'
 import { hijackNodeMethodsOfIframe } from './hijack-node-methods'
 import { SCRIPT_TYPES } from './constant'
@@ -7,30 +7,25 @@ import { hijackEventAttr } from './hijack-event-attr'
 export async function initApp(option: MicroAppOption, root: MicroAppRoot) {
   try {
     const iframe = document.createElement('iframe')
-    // const blob = new Blob(['<span></span>'], { type: 'text/html' })
-    iframe.src = option.runtimePath
-    // iframe.src = URL.createObjectURL(blob)
+    const entryUrl = new URL(option.entry)
+    const entryOrigin = entryUrl.origin
+    const blob = new Blob([generateFrameHtml(entryOrigin)], { type: 'text/html' })
+    iframe.src = URL.createObjectURL(blob)
     iframe.hidden = true
     defineProperty(root, 'frameElement', { value: iframe })
-
-    const style = document.createElement('style')
-    // style.textContent = 'm-document{display:block;height:100%;}' // FIXME: 距离上边缘多出7-8px
-    style.textContent = 'm-document{display:block;position:absolute;top:0;left:0;width:100%;height:100%;}'
-
-    const doc = document.createElement('m-document')
-    defineProperty(root, 'document', { value: doc })
 
     const [response] = await Promise.all([
       fetch(option.entry, option.fetchOption),
       new Promise((resolve) => {
         addEventListenerTo(iframe, 'load', resolve, { once: true })
-        DocumentFragment.prototype.append.call(root, iframe, style, doc)
+        // DocumentFragment.prototype.append.call(root, iframe, style, doc)
+        DocumentFragment.prototype.append.call(root, iframe)
       }),
     ])
     addEventListenerTo(iframe, 'load', () => onIframeReload(option, root))
 
     const htmlText = await response.text()
-    initShadowDom(option, root, htmlText)
+    initShadowDom(option, root, htmlText, origin)
   }
   catch (error) {
     warn(error)
@@ -38,10 +33,15 @@ export async function initApp(option: MicroAppOption, root: MicroAppRoot) {
   root.host.dispatchEvent(new Event('load'))
 }
 
-function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: string) {
+function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: string, origin: string) {
   const { contentWindow, contentDocument } = root.frameElement
   const newDoc = domParser.parseFromString(htmlText, 'text/html')
+  const baseElem = document.createElement('base')
+  baseElem.href = origin
   const externalHtmlEl = newDoc.documentElement
+  newDoc.head.appendChild(baseElem)
+
+  // 这里只是设置属性，还没有把 DOM 挂载上去
   defineProperties(root, {
     documentElement: {
       configurable: true,
@@ -61,7 +61,8 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
   const internalHtmlEl = contentDocument.documentElement
   const baseEl = externalHtmlEl.querySelector('base')
   if (baseEl) {
-    appendChildTo(internalHtmlEl, baseEl)
+    const clonedBaseElem = baseEl.cloneNode()
+    appendChildTo(internalHtmlEl, clonedBaseElem)
   }
 
   // Recreate <script> elements
@@ -109,14 +110,15 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
   }
 
   defineProperty(contentWindow, 'mRoot', { value: root })
-  contentWindow.history.replaceState(option.initialState, '', option.initialUrl)
+  // contentWindow.history.replaceState(option.initialState, '', option.initialUrl) // TODO 修复这个问题
+  console.log('running here')
   syncUrlToTopWindow(contentWindow, option)
   hijackEventAttr([externalHtmlEl], root, contentWindow)
   hijackNodeMethodsOfIframe(contentWindow)
   option.beforeReady?.(contentWindow)
 
   requestAnimationFrame(() => {
-    appendChildTo(root.document, externalHtmlEl)
+    appendChildTo(root, externalHtmlEl)
     appendTo(internalHtmlEl, ...newScripts)
   })
 }

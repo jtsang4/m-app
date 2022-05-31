@@ -51,9 +51,15 @@ function hijackElement({ HTMLElement }: Window) {
   // Hijack property 'ownerDocument'
   const desc = Object.getOwnPropertyDescriptor(Node[PROTOTYPE], 'ownerDocument')
   desc.enumerable = false
+  // defineProperties(HTMLElement[PROTOTYPE], {
+  //   ownerDocument: {
+  //     configurable: true,
+  //   },
+  // })
   defineProperties(HTMLElement[PROTOTYPE], {
     _rawOwnerDoc: desc,
     ownerDocument: {
+      configurable: true,
       get() {
         const root = <MicroAppRoot> this.getRootNode()
         const isMicroApp = root?.host?.tagName === EL_TAG_NAME
@@ -141,11 +147,11 @@ function hijackDocument({ document, mRoot }: Window) {
     },
     addEventListener: {
       // @ts-expect-error: refactor later
-      value: (...args) => mRoot.document.addEventListener(...args),
+      value: (...args) => mRoot.documentElement.addEventListener(...args),
     },
     removeEventListener: {
       // @ts-expect-error: refactor later
-      value: (...args) => mRoot.document.removeEventListener(...args),
+      value: (...args) => mRoot.documentElement.removeEventListener(...args),
     },
   })
 }

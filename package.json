@@ -13,7 +13,8 @@
     "index.d.ts"
   ],
   "scripts": {
-    "build": "rimraf ./lib && tsc && vite build && node ./scripts/cp-types.js",
+    "build": "rimraf ./lib && tsc && node ./scripts/cp-types.js && vite build",
+    "build:watch": "rimraf ./lib && tsc && node ./scripts/cp-types.js && vite build --watch",
     "build:prod": "node ./scripts/build-prod",
     "build:docs": "node ./scripts/build-docs"
   },
