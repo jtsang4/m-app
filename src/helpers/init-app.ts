@@ -1,4 +1,4 @@
-import { addEventListenerTo, appendChildTo, appendTo, defineProperties, defineProperty, domParser, generateFrameHtml, replaceChild, warn } from './utils'
+import { addEventListenerTo, appendChildTo, appendTo, defineProperties, defineProperty, domParser, generateFrameHtml, generateStaticResourceMutator, replaceChild, warn } from './utils'
 import { syncUrlToTopWindow, updateTopWindowUrl } from './sync-url'
 import { hijackNodeMethodsOfIframe } from './hijack-node-methods'
 import { SCRIPT_TYPES } from './constant'
@@ -25,7 +25,7 @@ export async function initApp(option: MicroAppOption, root: MicroAppRoot) {
     addEventListenerTo(iframe, 'load', () => onIframeReload(option, root))
 
     const htmlText = await response.text()
-    initShadowDom(option, root, htmlText, origin)
+    initShadowDom(option, root, htmlText, entryOrigin)
   }
   catch (error) {
     warn(error)
@@ -35,17 +35,22 @@ export async function initApp(option: MicroAppOption, root: MicroAppRoot) {
 
 function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: string, origin: string) {
   const { contentWindow, contentDocument } = root.frameElement
-  const newDoc = domParser.parseFromString(htmlText, 'text/html')
   const baseElem = document.createElement('base')
   baseElem.href = origin
-  const externalHtmlEl = newDoc.documentElement
-  newDoc.head.appendChild(baseElem)
+  const withBaseHtmlText = htmlText.replace(/<head>/, `<head>${baseElem.outerHTML}`)
+  const newDoc = domParser.parseFromString(withBaseHtmlText, 'text/html')
+  const externalDocumentElement = newDoc.documentElement
+  newDoc.head.prepend(baseElem)
+
+  // add static requesting element Observer
+  const staticMutationScriptElem = generateStaticResourceMutator(contentDocument)
+  newDoc.head.prepend(staticMutationScriptElem)
 
   // 这里只是设置属性，还没有把 DOM 挂载上去
   defineProperties(root, {
     documentElement: {
       configurable: true,
-      value: externalHtmlEl,
+      value: externalDocumentElement,
     },
     head: {
       configurable: true,
@@ -58,15 +63,22 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
   })
 
   // Isolate <base> element
-  const internalHtmlEl = contentDocument.documentElement
-  const baseEl = externalHtmlEl.querySelector('base')
+  const shadowDocumentElement = contentDocument.documentElement
+  const baseEl = externalDocumentElement.querySelector('base')
   if (baseEl) {
     const clonedBaseElem = baseEl.cloneNode()
-    appendChildTo(internalHtmlEl, clonedBaseElem)
+    appendChildTo(shadowDocumentElement, clonedBaseElem)
   }
 
+  const styleLinkList = newDoc.querySelectorAll('link[rel="stylesheet"]') as NodeListOf<HTMLLinkElement>
+  styleLinkList.forEach((styleLink) => {
+    // Revise style <link> by re-assign href attribute
+    // eslint-disable-next-line no-self-assign
+    styleLink.href = styleLink.href
+  })
+
   // Recreate <script> elements
-  const scriptList = externalHtmlEl.querySelectorAll('script')
+  const scriptList = externalDocumentElement.querySelectorAll('script')
   const newScripts: HTMLScriptElement[] = []
   const deferScripts: HTMLScriptElement[] = []
   const asyncScripts: HTMLScriptElement[] = []
@@ -87,6 +99,11 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
       else if (newEl.async) {
         asyncScripts.push(newEl)
       }
+    }
+    else if (type === 'raw:text/javascript') {
+      const newEl = contentDocument.createElement('script')
+      newEl.text = el.text
+      newScripts.push(newEl)
     }
   })
 
@@ -110,16 +127,18 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
   }
 
   defineProperty(contentWindow, 'mRoot', { value: root })
+
   // contentWindow.history.replaceState(option.initialState, '', option.initialUrl) // TODO 修复这个问题
+  // eslint-disable-next-line no-console
   console.log('running here')
   syncUrlToTopWindow(contentWindow, option)
-  hijackEventAttr([externalHtmlEl], root, contentWindow)
+  hijackEventAttr([externalDocumentElement], root, contentWindow)
   hijackNodeMethodsOfIframe(contentWindow)
   option.beforeReady?.(contentWindow)
 
   requestAnimationFrame(() => {
-    appendChildTo(root, externalHtmlEl)
-    appendTo(internalHtmlEl, ...newScripts)
+    appendChildTo(root, externalDocumentElement)
+    appendTo(shadowDocumentElement, ...newScripts)
   })
 }
 

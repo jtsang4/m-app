@@ -63,4 +63,28 @@ export function generateFrameHtml(origin: string) {
   `
 }
 
+export function generateStaticResourceMutator(doc: Document) {
+  const srcElem = doc.createElement('script')
+  srcElem.type = 'raw:text/javascript'
+  srcElem.textContent = `
+const docElem = document.documentElement;
+
+const options = {
+  childList: true,
+  subtree: true,
+};
+function mCallback(mutations) {
+  for (let mutation of mutations) {
+    if (mutation.type === 'childList') {
+      console.log('Mutation Detected: A child node has been added or removed.', mutation);
+    }
+  }
+}
+const observer = new MutationObserver(mCallback);
+
+observer.observe(docElem, options);
+  `
+  return srcElem
+}
+
 export const domParser = new DOMParser()
