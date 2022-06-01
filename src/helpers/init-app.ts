@@ -1,4 +1,15 @@
-import { addEventListenerTo, appendChildTo, appendTo, defineProperties, defineProperty, domParser, generateFrameHtml, generateStaticResourceMutator, replaceChild, warn } from './utils'
+import {
+  addEventListenerTo,
+  appendChildTo,
+  appendTo,
+  defineProperties,
+  defineProperty,
+  domParser,
+  generateFrameHtml,
+  generateStaticResourceMutator,
+  replaceChild,
+  warn,
+} from './utils'
 import { syncUrlToTopWindow, updateTopWindowUrl } from './sync-url'
 import { hijackNodeMethodsOfIframe } from './hijack-node-methods'
 import { SCRIPT_TYPES } from './constant'
@@ -33,17 +44,16 @@ export async function initApp(option: MicroAppOption, root: MicroAppRoot) {
   root.host.dispatchEvent(new Event('load'))
 }
 
-function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: string, origin: string) {
+function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: string, entryOrigin: string) {
   const { contentWindow, contentDocument } = root.frameElement
   const baseElem = document.createElement('base')
-  baseElem.href = origin
+  baseElem.href = entryOrigin
   const withBaseHtmlText = htmlText.replace(/<head>/, `<head>${baseElem.outerHTML}`)
   const newDoc = domParser.parseFromString(withBaseHtmlText, 'text/html')
   const externalDocumentElement = newDoc.documentElement
-  newDoc.head.prepend(baseElem)
 
   // add static requesting element Observer
-  const staticMutationScriptElem = generateStaticResourceMutator(contentDocument)
+  const staticMutationScriptElem = generateStaticResourceMutator(contentDocument, entryOrigin)
   newDoc.head.prepend(staticMutationScriptElem)
 
   // 这里只是设置属性，还没有把 DOM 挂载上去
@@ -70,6 +80,10 @@ function initShadowDom(option: MicroAppOption, root: MicroAppRoot, htmlText: str
     appendChildTo(shadowDocumentElement, clonedBaseElem)
   }
 
+  const allLink = newDoc.querySelectorAll('link')
+  allLink.forEach((link) => {
+    link.href = link.href.replace(window.location.origin, entryOrigin)
+  })
   const styleLinkList = newDoc.querySelectorAll('link[rel="stylesheet"]') as NodeListOf<HTMLLinkElement>
   styleLinkList.forEach((styleLink) => {
     // Revise style <link> by re-assign href attribute

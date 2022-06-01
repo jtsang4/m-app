@@ -63,7 +63,7 @@ export function generateFrameHtml(origin: string) {
   `
 }
 
-export function generateStaticResourceMutator(doc: Document) {
+export function generateStaticResourceMutator(doc: Document, entryOrigin: string) {
   const srcElem = doc.createElement('script')
   srcElem.type = 'raw:text/javascript'
   srcElem.textContent = `
@@ -75,8 +75,17 @@ const options = {
 };
 function mCallback(mutations) {
   for (let mutation of mutations) {
-    if (mutation.type === 'childList') {
-      console.log('Mutation Detected: A child node has been added or removed.', mutation);
+    if (mutation.type === 'childList' && mutation.addedNodes.length) {
+      for (let node of mutation.addedNodes) {
+        // 处理自己有 src 的情况
+        if (node.nodeType === 1 && node.src) {
+          node.src = node.src.replace(window.location.origin, '${entryOrigin}');
+        }
+        const children = node.querySelectorAll('[src]');
+        for (let child of children) {
+          child.src = child.src.replace(window.location.origin, '${entryOrigin}');
+        }
+      }      
     }
   }
 }
